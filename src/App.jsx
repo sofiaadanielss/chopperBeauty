@@ -144,18 +144,18 @@ export default function App() {
     }
   }
 
-  function loop() {
+  function loop(now) {
     if (!runningRef.current) return;
     const video = videoRef.current;
     if (video.currentTime !== lastTimeRef.current) {
       lastTimeRef.current = video.currentTime;
-      const res = landmarkerRef.current.detectForVideo(video, performance.now());
+      const res = landmarkerRef.current.detectForVideo(video, now);
       const octx = overlayRef.current.getContext("2d");
       octx.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
 
       if (res.faceLandmarks && res.faceLandmarks.length) {
         setStatus("");
-        analyze(res.faceLandmarks[0], octx);
+        analyze(res.faceLandmarks[0], octx, now);
       } else {
         setStatus("No veo tu cara. Mírame de frente.");
       }
@@ -163,13 +163,13 @@ export default function App() {
     rafRef.current = requestAnimationFrame(loop);
   }
 
-  function analyze(lm, octx) {
+  function analyze(lm, octx, now) {
     const video = videoRef.current;
     const W = video.videoWidth, H = video.videoHeight;
     const gctx = grabRef.current.getContext("2d", { willReadFrequently: true });
     gctx.drawImage(video, 0, 0, W, H);
 
-    // Tamaño del parche segun que tan grande se ve la cara
+    // Tamaño del parche según qué tan grande se ve la cara
     const faceW = Math.hypot((lm[454].x - lm[234].x) * W, (lm[454].y - lm[234].y) * H);
     const half = Math.max(3, Math.round(faceW * 0.025));
 
@@ -198,7 +198,6 @@ export default function App() {
       : rgb;
 
     // Actualiza la pantalla ~10 veces por segundo
-    const now = performance.now();
     if (!frozenRef.current && now - lastUiRef.current > 100) {
       lastUiRef.current = now;
       setResult(describe(smoothRef.current));
