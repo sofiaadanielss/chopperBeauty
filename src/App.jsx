@@ -1,78 +1,39 @@
 import { useEffect, useRef, useState } from "react";
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+import { MODEL_URL, WASM_URL } from "../chopper-beauty-refactor/src/constants/config";
+import { describeSkinColor, getLightingWarning, smoothColor } from "../chopper-beauty-refactor/src/utils/color";
+import { averagePatchesColor, getSamplePatches } from "../chopper-beauty-refactor/src/utils/skinSampler";
 import "./App.css";
 
-const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
-const MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
-
-/* ---------- Ajustes que puedes tunear ---------- */
-// Ángulo de matiz en Lab (grados). Menor = más rosado/frío, mayor = más dorado/cálido.
-const HUE_COOL_BELOW = 50;
-const HUE_WARM_ABOVE = 58;
-
-// Puntos de la malla facial donde se toma el color: mejillas y frente.
-const SAMPLE_POINTS = [50, 280, 205, 425, 151];
-
-const PALETTES = {
+const SEASONS = {
   warm: {
-    label: "Cálido",
-    metal: "Te favorece el oro.",
-    colors: [
-      ["#C9772B", "Terracota"],
-      ["#E2A93B", "Mostaza"],
-      ["#8A8F3A", "Oliva"],
-      ["#B5532F", "Óxido"],
-      ["#E58E73", "Coral"],
-    ],
+    light: {
+      name: "Spring",
+      description: "Warm and light. Start with clear, sunny shades.",
+      colors: [["#f5b094", "Peach"], ["#ef816d", "Coral"], ["#efd279", "Butter"], ["#99ac69", "Apple green"]],
+    },
+    deep: {
+      name: "Autumn",
+      description: "Warm and deep. Start with rich, earthy shades.",
+      colors: [["#a9573a", "Rust"], ["#b7863d", "Ochre"], ["#74744a", "Olive"], ["#704738", "Chestnut"]],
+    },
   },
   cool: {
-    label: "Frío",
-    metal: "Te favorece la plata.",
-    colors: [
-      ["#4F6FB8", "Azul rey"],
-      ["#6C4A8F", "Ciruela"],
-      ["#2F8F83", "Esmeralda"],
-      ["#C46A8E", "Rosa fucsia"],
-      ["#8FA3BF", "Azul hielo"],
-    ],
-  },
-  neutral: {
-    label: "Neutro",
-    metal: "Te favorecen el oro y la plata.",
-    colors: [
-      ["#B85C6A", "Rosa palo"],
-      ["#4C8C7A", "Verde jade"],
-      ["#7B6BA8", "Lavanda"],
-      ["#C98F52", "Caramelo"],
-      ["#5E7FA3", "Azul acero"],
-    ],
+    light: {
+      name: "Summer",
+      description: "Cool and light. Start with soft, powdery shades.",
+      colors: [["#b585a1", "Dusty rose"], ["#afa2cd", "Lavender"], ["#9eafcf", "Mist blue"], ["#899f9d", "Cool sage"]],
+    },
+    deep: {
+      name: "Winter",
+      description: "Cool and deep. Start with crisp, saturated shades.",
+      colors: [["#993d69", "Berry"], ["#485997", "Royal blue"], ["#436b68", "Pine"], ["#573664", "Plum"]],
+    },
   },
 };
-/* ------------------------------------------------ */
+const UNDERTONES = { warm: "Warm", cool: "Cool", neutral: "Neutral" };
 
-function rgbToLab([R, G, B]) {
-  const lin = (c) => {
-    c /= 255;
-    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  };
-  const r = lin(R), g = lin(G), b = lin(B);
-  const X = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
-  const Y = r * 0.2126 + g * 0.7152 + b * 0.0722;
-  const Z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
-  const f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
-  const fx = f(X), fy = f(Y), fz = f(Z);
-  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
-}
-
-function describe(rgb) {
-  const [L, a, b] = rgbToLab(rgb);
-  const hue = (Math.atan2(b, a) * 180) / Math.PI;
-  const key = hue < HUE_COOL_BELOW ? "cool" : hue > HUE_WARM_ABOVE ? "warm" : "neutral";
-  return { key, hue, L, rgb };
-}
-
-export default function App() {
+function Analysis({ onExit }) {
   const videoRef = useRef(null);
   const overlayRef = useRef(null);
   const grabRef = useRef(null);
@@ -80,20 +41,25 @@ export default function App() {
   const streamRef = useRef(null);
   const rafRef = useRef(0);
   const runningRef = useRef(false);
+  const mountedRef = useRef(false);
   const frozenRef = useRef(false);
   const smoothRef = useRef(null);
   const lastTimeRef = useRef(-1);
   const lastUiRef = useRef(0);
 
-  const [status, setStatus] = useState("Pulsa «Iniciar cámara» para empezar.");
+  const [status, setStatus] = useState("");
   const [started, setStarted] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [drape, setDrape] = useState(null);
   const [frozen, setFrozen] = useState(false);
   const [result, setResult] = useState(null);
-  const [aspect, setAspect] = useState("4 / 3");
+  const [aspect, setAspect] = useState("16 / 10");
 
-  // Al cerrar la página: apagar la cámara y liberar el modelo
+  // release the camera and model when leaving analysis.
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       runningRef.current = false;
       cancelAnimationFrame(rafRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -106,101 +72,102 @@ export default function App() {
     setStarted(true);
     try {
       if (!landmarkerRef.current) {
-        setStatus("Cargando modelo de reconocimiento facial…");
+        setStatus("Loading the face detection model…");
         const fileset = await FilesetResolver.forVisionTasks(WASM_URL);
-        landmarkerRef.current = await FaceLandmarker.createFromOptions(fileset, {
+        if (!mountedRef.current) return;
+        const landmarker = await FaceLandmarker.createFromOptions(fileset, {
           baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
           runningMode: "VIDEO",
           numFaces: 1,
         });
+        if (!mountedRef.current) {
+          landmarker.close();
+          return;
+        }
+        landmarkerRef.current = landmarker;
       }
 
-      setStatus("Pidiendo acceso a la cámara…");
+      setStatus("Waiting for camera permission…");
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 720 } },
         audio: false,
       });
+      if (!mountedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
 
       const video = videoRef.current;
       video.srcObject = stream;
       await video.play();
+      if (!mountedRef.current) return;
 
-      const W = video.videoWidth, H = video.videoHeight;
-      overlayRef.current.width = W;
-      overlayRef.current.height = H;
+      const { videoWidth, videoHeight } = video;
+      overlayRef.current.width = videoWidth;
+      overlayRef.current.height = videoHeight;
       grabRef.current = document.createElement("canvas");
-      grabRef.current.width = W;
-      grabRef.current.height = H;
-      setAspect(`${W} / ${H}`);
+      grabRef.current.width = videoWidth;
+      grabRef.current.height = videoHeight;
+      setAspect(`${videoWidth} / ${videoHeight}`);
 
       runningRef.current = true;
-      setStatus("");
+      setCameraReady(true);
+      setStatus("Center your face and look straight ahead.");
       rafRef.current = requestAnimationFrame(loop);
     } catch (err) {
+      if (!mountedRef.current) return;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      videoRef.current.srcObject = null;
       console.error(err);
-      setStatus("No se pudo iniciar: " + err.message);
+      setStatus(err.name === "NotAllowedError"
+        ? "Camera access was denied. Allow it in your browser settings, then try again."
+        : "Camera startup failed. Check your camera and connection, then try again.");
       setStarted(false);
     }
   }
 
-  function loop(now) {
+  function loop(frameTime) {
     if (!runningRef.current) return;
     const video = videoRef.current;
     if (video.currentTime !== lastTimeRef.current) {
       lastTimeRef.current = video.currentTime;
-      const res = landmarkerRef.current.detectForVideo(video, now);
-      const octx = overlayRef.current.getContext("2d");
-      octx.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
+      const detection = landmarkerRef.current.detectForVideo(video, frameTime);
+      const overlayContext = overlayRef.current.getContext("2d");
+      overlayContext.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
 
-      if (res.faceLandmarks && res.faceLandmarks.length) {
+      if (detection.faceLandmarks && detection.faceLandmarks.length) {
         setStatus("");
-        analyze(res.faceLandmarks[0], octx, now);
+        analyze(detection.faceLandmarks[0], overlayContext, frameTime);
       } else {
-        setStatus("No veo tu cara. Mírame de frente.");
+        setStatus("Center your face and look straight ahead.");
       }
     }
     rafRef.current = requestAnimationFrame(loop);
   }
 
-  function analyze(lm, octx, now) {
+  function analyze(landmarks, overlayContext, frameTime) {
     const video = videoRef.current;
-    const W = video.videoWidth, H = video.videoHeight;
-    const gctx = grabRef.current.getContext("2d", { willReadFrequently: true });
-    gctx.drawImage(video, 0, 0, W, H);
+    const { videoWidth, videoHeight } = video;
+    const frameContext = grabRef.current.getContext("2d", { willReadFrequently: true });
+    frameContext.drawImage(video, 0, 0, videoWidth, videoHeight);
 
-    // Tamaño del parche según qué tan grande se ve la cara
-    const faceW = Math.hypot((lm[454].x - lm[234].x) * W, (lm[454].y - lm[234].y) * H);
-    const half = Math.max(3, Math.round(faceW * 0.025));
+    const patches = getSamplePatches(landmarks, videoWidth, videoHeight);
+    const rgb = averagePatchesColor(frameContext, patches);
+    if (!rgb) return;
 
-    let r = 0, g = 0, b = 0, n = 0;
-    octx.strokeStyle = "#ffffff";
-    octx.lineWidth = 2;
-
-    for (const i of SAMPLE_POINTS) {
-      const x = Math.max(0, Math.round(lm[i].x * W) - half);
-      const y = Math.max(0, Math.round(lm[i].y * H) - half);
-      const w = Math.min(half * 2, W - x);
-      const h = Math.min(half * 2, H - y);
-      if (w <= 0 || h <= 0) continue;
-      const d = gctx.getImageData(x, y, w, h).data;
-      for (let k = 0; k < d.length; k += 4) {
-        r += d[k]; g += d[k + 1]; b += d[k + 2]; n++;
-      }
-      octx.strokeRect(x, y, w, h);
+    overlayContext.strokeStyle = "#ffffff";
+    overlayContext.lineWidth = 2;
+    for (const patch of patches) {
+      overlayContext.strokeRect(patch.x, patch.y, patch.width, patch.height);
     }
-    if (!n) return;
+    smoothRef.current = smoothColor(smoothRef.current, rgb);
 
-    const rgb = [r / n, g / n, b / n];
-    // Suavizado entre cuadros para que el resultado no parpadee
-    smoothRef.current = smoothRef.current
-      ? smoothRef.current.map((v, i) => v * 0.9 + rgb[i] * 0.1)
-      : rgb;
-
-    // Actualiza la pantalla ~10 veces por segundo
-    if (!frozenRef.current && now - lastUiRef.current > 100) {
-      lastUiRef.current = now;
-      setResult(describe(smoothRef.current));
+    // update the result at most ten times per second.
+    if (!frozenRef.current && frameTime - lastUiRef.current > 100) {
+      lastUiRef.current = frameTime;
+      setResult(describeSkinColor(smoothRef.current));
     }
   }
 
@@ -209,69 +176,163 @@ export default function App() {
     setFrozen(frozenRef.current);
   }
 
-  const palette = result ? PALETTES[result.key] : null;
-  const lightNote = !result
-    ? ""
-    : result.L < 30
-    ? "Hay poca luz: el resultado puede fallar."
-    : result.L > 88
-    ? "Hay demasiada luz o brillo: el resultado puede fallar."
-    : "";
+  const estimate = result ? UNDERTONES[result.undertone] : null;
+  const lightNote = result ? getLightingWarning(result.lightness) : "";
+  const [temperature, setTemperature] = useState(null);
+  const [depth, setDepth] = useState(null);
+  const step = temperature === null ? 0 : depth === null ? 1 : 2;
+  const season = step === 2 ? SEASONS[temperature][depth] : null;
+  const headingRef = useRef(null);
+
+  useEffect(() => {
+    headingRef.current.focus();
+  }, [step]);
+
+  function selectComparison(value) {
+    if (step === 0) setTemperature(value);
+    else setDepth(value);
+    setDrape(null);
+  }
+
+  function goBack() {
+    if (step === 0) {
+      onExit();
+      return;
+    }
+    if (step === 1) setTemperature(null);
+    else setDepth(null);
+    setDrape(null);
+  }
+
+  const comparisons = step === 0
+    ? [["warm", "Warm peach", "#de977e"], ["cool", "Cool pink", "#c67caa"]]
+    : temperature === "warm"
+      ? [["light", "Light peach", "#f1b59b"], ["deep", "Deep terracotta", "#9c4c38"]]
+      : [["light", "Light lilac", "#c8b9e5"], ["deep", "Deep plum", "#5b356c"]];
 
   return (
-    <main className="app">
-      <section>
+    <div className="studio">
+      <section className="guide" aria-labelledby="guide-title">
+        <button className="text-button back" onClick={goBack}>← {step ? "Previous step" : "Home"}</button>
+        <ol className="steps" aria-label="Analysis progress">
+          {["Warm or cool", "Light or deep", "Your season"].map((label, index) => (
+            <li key={label} aria-current={index === step ? "step" : undefined}>{label}</li>
+          ))}
+        </ol>
+        <h1 id="guide-title" ref={headingRef} tabIndex={-1}>
+          {["Warm or cool?", "Light or deep?", "Your season"][step]}
+        </h1>
+        {step < 2 ? (
+          <>
+            <p>{step === 0
+              ? "Start with a clean, makeup-free face in soft, neutral light. Compare peach and pink fabric just below your chin, or try gold and silver."
+              : "Compare a light pastel with a deeper, saturated color in the same undertone. Keep the lighting and distance from your face consistent."}</p>
+            <p>{step === 0
+              ? "Choose the family that makes your complexion look brighter and more even."
+              : "Choose the depth that brings your features into focus without overpowering them."}</p>
+            <div className="choices" role="group" aria-label="Choose the better match">
+              {comparisons.map(([value, label, color]) => (
+                <button className="choice" key={value} onClick={() => selectComparison(value)}>
+                  <span className="choice-dot" style={{ background: color }} aria-hidden="true" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="season-name">{season.name}</p>
+            <p>{season.description} This is a starting palette based on your drape choices.</p>
+            <ul className="palette" aria-label={season.name + " palette"}>
+              {season.colors.map(([color, name]) => (
+                <li key={name}><span className="swatch" style={{ background: color }} />{name}</li>
+              ))}
+            </ul>
+            <button className="text-button reset" onClick={() => {
+              setTemperature(null);
+              setDepth(null);
+              setDrape(null);
+            }}>Start comparisons again</button>
+          </>
+        )}
+      </section>
+      <section className="camera" aria-labelledby="camera-title">
+        <div className="camera-heading">
+          <h2 id="camera-title">Camera preview</h2>
+          <span>{cameraReady ? "Live" : "Optional"}</span>
+        </div>
         <div className="viewport" style={{ aspectRatio: aspect }}>
           <video ref={videoRef} playsInline muted />
-          <canvas ref={overlayRef} />
-          {status && <p className="status">{status}</p>}
+          <canvas ref={overlayRef} aria-hidden="true" />
+          {!cameraReady && (
+            <div className="camera-cover">
+              <p>Use your camera as a mirror.</p>
+              <button className="button camera-button" onClick={start} disabled={started}>
+                {started ? "Starting camera…" : "Allow camera access"}
+              </button>
+            </div>
+          )}
+          {cameraReady && drape && <div className="drape-strip" style={{ background: drape }} aria-hidden="true" />}
         </div>
-        <div className="controls">
-          <button onClick={start} disabled={started}>
-            Iniciar cámara
-          </button>
-          <button className="secondary" onClick={toggleFreeze} disabled={!result}>
-            {frozen ? "Reanudar" : "Congelar resultado"}
-          </button>
-        </div>
-      </section>
-
-      <section aria-live="polite">
-        <h1>Chopper Camera</h1>
-        <p className="lead">Descubre si te favorecen los colores cálidos o fríos.</p>
-
-        <div className="verdict">
-          <div
-            className="chip"
-            title="Color de piel detectado"
-            style={result ? { background: `rgb(${result.rgb.map(Math.round).join(",")})` } : undefined}
-          />
-          <div className={`verdict-word ${result ? result.key : ""}`}>
-            {palette ? palette.label : "—"}
+        {status && <p className="camera-status" role="status">{status}</p>}
+        {cameraReady && step < 2 && (
+          <div className="drapes">
+            <h3>Preview drapes</h3>
+            <p>Use the color strip as a visual reference, or hold real fabric near your face.</p>
+            <div className="choices">
+              {comparisons.map(([value, label, color]) => (
+                <button className="choice" key={value} aria-pressed={drape === color}
+                  onClick={() => setDrape(drape === color ? null : color)}>
+                  <span className="choice-dot" style={{ background: color }} aria-hidden="true" />
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-
-        <p className="metal">{palette ? palette.metal : ""}</p>
-
-        <ul className="palette">
-          {palette &&
-            palette.colors.map(([hex, name]) => (
-              <li key={hex}>
-                <span className="sw" style={{ background: hex }} />
-                {name}
-              </li>
-            ))}
-        </ul>
-
-        <p className="debug">
-          {result ? `Matiz ${result.hue.toFixed(1)}° · Luminosidad ${result.L.toFixed(0)}` : ""}
-        </p>
-        <p className="note">{lightNote}</p>
-        <p className="tip">
-          Para un buen resultado: luz natural de frente, sin filtros, sin maquillaje y sin luces
-          de colores en la habitación.
-        </p>
+        )}
+        {estimate && (
+          <div className="estimate">
+            <p><strong>Camera estimate</strong> {estimate} undertone</p>
+            <button className="text-button" onClick={toggleFreeze}>{frozen ? "Resume estimate" : "Freeze estimate"}</button>
+            {lightNote && <p className="light-note">{lightNote}</p>}
+          </div>
+        )}
       </section>
-    </main>
+    </div>
+  );
+}
+
+export default function App() {
+  const [inStudio, setInStudio] = useState(false);
+  const startRef = useRef(null);
+
+  function returnHome() {
+    setInStudio(false);
+    requestAnimationFrame(() => startRef.current?.focus());
+  }
+
+  return (
+    <div className="app">
+      <header className="brand-bar">
+        <span className="wordmark">Chopper Beauty</span>
+        {inStudio && <button className="text-button" onClick={returnHome}>Exit studio</button>}
+      </header>
+      <main>
+        {inStudio ? <Analysis onExit={returnHome} /> : (
+          <div className="welcome">
+            <div className="welcome-content">
+              <h1>Chopper Beauty</h1>
+              <p className="slogan">Find the colors that bring you to life.</p>
+              <p className="lead">A Korean-inspired personal color analysis. Compare drapes near your face and discover your seasonal palette.</p>
+              <button className="button" ref={startRef} onClick={() => setInStudio(true)}>Start color analysis <span aria-hidden="true">→</span></button>
+            </div>
+            <details className="about">
+              <summary>What is personal color analysis?</summary>
+              <p>It matches colors to your natural features, including your skin, eyes, and hair. This studio uses two drape comparisons to explore four seasons: Spring, Summer, Autumn, and Winter.</p>
+            </details>
+          </div>
+        )}
+      </main>
+    </div>
   );
 }

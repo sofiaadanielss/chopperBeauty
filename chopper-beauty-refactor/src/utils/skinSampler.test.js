@@ -15,12 +15,12 @@ function buildFakeLandmarks() {
 }
 
 describe("getSamplePatches", () => {
-  it("devuelve un parche por cada punto de muestreo", () => {
+  it("returns a patch for each sample point", () => {
     const patches = getSamplePatches(buildFakeLandmarks(), VIDEO_WIDTH, VIDEO_HEIGHT);
     expect(patches).toHaveLength(SAMPLE_POINT_INDEXES.length);
   });
 
-  it("mantiene todos los parches dentro del cuadro de video", () => {
+  it("keeps all patches inside the video frame", () => {
     const landmarks = buildFakeLandmarks();
     landmarks[SAMPLE_POINT_INDEXES[0]] = { x: 0.999, y: 0.999 };
     const patches = getSamplePatches(landmarks, VIDEO_WIDTH, VIDEO_HEIGHT);
@@ -32,8 +32,8 @@ describe("getSamplePatches", () => {
 });
 
 describe("averagePatchesColor", () => {
-  it("promedia el color de los píxeles de un parche", () => {
-    // Dos píxeles RGBA: (100, 50, 0) y (200, 150, 100)
+  it("averages the pixel colors in a patch", () => {
+    // two pixels with rgb values (100, 50, 0) and (200, 150, 100).
     const fakeContext = {
       getImageData: () => ({ data: new Uint8ClampedArray([100, 50, 0, 255, 200, 150, 100, 255]) }),
     };
@@ -41,7 +41,7 @@ describe("averagePatchesColor", () => {
     expect(color).toEqual([150, 100, 50]);
   });
 
-  it("devuelve null si no hay parches", () => {
+  it("returns null when there are no patches", () => {
     expect(averagePatchesColor({}, [])).toBeNull();
   });
 });

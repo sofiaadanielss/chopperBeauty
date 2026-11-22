@@ -1,39 +1,36 @@
-/**
- * Paletas recomendadas para cada subtono.
- * Cada color tiene su código hexadecimal y su nombre en español.
- */
+// suggested colors and metals for each undertone.
 export const PALETTES = {
   warm: {
-    label: "Cálido",
-    metal: "Te favorece el oro.",
+    label: "Warm",
+    metal: "Try gold jewelry.",
     colors: [
-      { hex: "#C9772B", name: "Terracota" },
-      { hex: "#E2A93B", name: "Mostaza" },
-      { hex: "#8A8F3A", name: "Oliva" },
-      { hex: "#B5532F", name: "Óxido" },
+      { hex: "#C9772B", name: "Terracotta" },
+      { hex: "#E2A93B", name: "Mustard" },
+      { hex: "#8A8F3A", name: "Olive" },
+      { hex: "#B5532F", name: "Rust" },
       { hex: "#E58E73", name: "Coral" },
     ],
   },
   cool: {
-    label: "Frío",
-    metal: "Te favorece la plata.",
+    label: "Cool",
+    metal: "Try silver jewelry.",
     colors: [
-      { hex: "#4F6FB8", name: "Azul rey" },
-      { hex: "#6C4A8F", name: "Ciruela" },
-      { hex: "#2F8F83", name: "Esmeralda" },
-      { hex: "#C46A8E", name: "Rosa fucsia" },
-      { hex: "#8FA3BF", name: "Azul hielo" },
+      { hex: "#4F6FB8", name: "Royal blue" },
+      { hex: "#6C4A8F", name: "Plum" },
+      { hex: "#2F8F83", name: "Emerald" },
+      { hex: "#C46A8E", name: "Fuchsia" },
+      { hex: "#8FA3BF", name: "Ice blue" },
     ],
   },
   neutral: {
-    label: "Neutro",
-    metal: "Te favorecen el oro y la plata.",
+    label: "Neutral",
+    metal: "Compare gold and silver jewelry.",
     colors: [
-      { hex: "#B85C6A", name: "Rosa palo" },
-      { hex: "#4C8C7A", name: "Verde jade" },
-      { hex: "#7B6BA8", name: "Lavanda" },
-      { hex: "#C98F52", name: "Caramelo" },
-      { hex: "#5E7FA3", name: "Azul acero" },
+      { hex: "#B85C6A", name: "Dusty rose" },
+      { hex: "#4C8C7A", name: "Jade green" },
+      { hex: "#7B6BA8", name: "Lavender" },
+      { hex: "#C98F52", name: "Caramel" },
+      { hex: "#5E7FA3", name: "Steel blue" },
     ],
   },
 };

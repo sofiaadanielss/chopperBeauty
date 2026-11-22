@@ -15,10 +15,7 @@ import { averagePatchesColor, getSamplePatches } from "../utils/skinSampler";
 const PATCH_OUTLINE_COLOR = "#ffffff";
 const PATCH_OUTLINE_WIDTH = 2;
 
-/**
- * Carga el modelo Face Landmarker de MediaPipe.
- * @returns {Promise<FaceLandmarker>} Detector listo para analizar video.
- */
+// load the face landmark model.
 async function createFaceLandmarker() {
   const fileset = await FilesetResolver.forVisionTasks(WASM_URL);
   return FaceLandmarker.createFromOptions(fileset, {
@@ -28,11 +25,7 @@ async function createFaceLandmarker() {
   });
 }
 
-/**
- * Pide acceso a la cámara frontal y la conecta al elemento de video.
- * @param {HTMLVideoElement} video Elemento donde se reproduce la cámara.
- * @returns {Promise<MediaStream>} Flujo de la cámara (necesario para apagarla después).
- */
+// connect the front camera and return the stream.
 async function openCamera(video) {
   const stream = await navigator.mediaDevices.getUserMedia({
     video: {
@@ -47,11 +40,7 @@ async function openCamera(video) {
   return stream;
 }
 
-/**
- * Dibuja el contorno de los parches de piel sobre el video.
- * @param {CanvasRenderingContext2D} context Contexto del canvas superpuesto.
- * @param {{x: number, y: number, width: number, height: number}[]} patches Parches a dibujar.
- */
+// draw the skin sampling outlines.
 function drawPatches(context, patches) {
   context.strokeStyle = PATCH_OUTLINE_COLOR;
   context.lineWidth = PATCH_OUTLINE_WIDTH;
@@ -60,14 +49,7 @@ function drawPatches(context, patches) {
   }
 }
 
-/**
- * Hook que maneja la cámara, la detección facial y el análisis de subtono.
- * @returns {{
- *   videoRef: object, overlayRef: object, status: string, hasStarted: boolean,
- *   isFrozen: boolean, result: object | null, aspectRatio: string,
- *   start: Function, toggleFreeze: Function
- * }} Referencias, estado y acciones para la interfaz.
- */
+// manage the camera and undertone estimate.
 export function useUndertoneCamera() {
   const videoRef = useRef(null);
   const overlayRef = useRef(null);
@@ -87,7 +69,7 @@ export function useUndertoneCamera() {
   const [result, setResult] = useState(null);
   const [aspectRatio, setAspectRatio] = useState(DEFAULT_ASPECT_RATIO);
 
-  // Al salir de la página: apagar la cámara y liberar el modelo.
+  // release the camera and model when leaving.
   useEffect(() => {
     return () => {
       isRunningRef.current = false;
@@ -98,7 +80,7 @@ export function useUndertoneCamera() {
     };
   }, []);
 
-  /** Ajusta los canvas al tamaño real del video. */
+  // size the canvases to match the video.
   function prepareCanvases(video) {
     const { videoWidth, videoHeight } = video;
     overlayRef.current.width = videoWidth;
@@ -109,7 +91,7 @@ export function useUndertoneCamera() {
     setAspectRatio(`${videoWidth} / ${videoHeight}`);
   }
 
-  /** Carga el modelo, abre la cámara e inicia el ciclo de análisis. */
+  // open the camera and start the analysis loop.
   async function start() {
     setHasStarted(true);
     try {
@@ -132,10 +114,7 @@ export function useUndertoneCamera() {
     }
   }
 
-  /**
-   * Ciclo principal: se ejecuta en cada cuadro de la pantalla.
-   * El timestamp lo entrega requestAnimationFrame (así no se llama a performance.now() directamente).
-   */
+  // process each animation frame using the browser timestamp.
   function loop(timestamp) {
     if (!isRunningRef.current) {
       return;
@@ -148,7 +127,7 @@ export function useUndertoneCamera() {
     animationRef.current = requestAnimationFrame(loop);
   }
 
-  /** Detecta la cara en el cuadro actual y, si existe, la analiza. */
+  // find and analyze the face in the current frame.
   function processFrame(video, timestamp) {
     const detection = landmarkerRef.current.detectForVideo(video, timestamp);
     const overlay = overlayRef.current;
@@ -163,7 +142,7 @@ export function useUndertoneCamera() {
     analyzeFace(detection.faceLandmarks[0], overlayContext, timestamp);
   }
 
-  /** Mide el color de piel, lo suaviza y actualiza el resultado en pantalla. */
+  // smooth the sampled color and display the estimate.
   function analyzeFace(landmarks, overlayContext, timestamp) {
     const video = videoRef.current;
     const frameContext = frameCanvasRef.current.getContext("2d", { willReadFrequently: true });
@@ -186,7 +165,7 @@ export function useUndertoneCamera() {
     }
   }
 
-  /** Pausa o reanuda la actualización del resultado en pantalla. */
+  // freeze or resume the displayed estimate.
   function toggleFreeze() {
     isFrozenRef.current = !isFrozenRef.current;
     setIsFrozen(isFrozenRef.current);

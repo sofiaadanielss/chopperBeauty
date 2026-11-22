@@ -4,7 +4,7 @@ import ResultPanel from "./components/ResultPanel";
 import { useUndertoneCamera } from "./hooks/useUndertoneCamera";
 import "./App.css";
 
-/** Pantalla principal: arma la cámara, los controles y el panel de resultados. */
+// compose the camera, controls, and results.
 function App() {
   const camera = useUndertoneCamera();
 
