@@ -3,6 +3,7 @@ import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { MODEL_URL, WASM_URL } from "../chopper-beauty-refactor/src/constants/config";
 import { describeSkinColor, getLightingWarning, smoothColor } from "../chopper-beauty-refactor/src/utils/color";
 import { averagePatchesColor, getSamplePatches } from "../chopper-beauty-refactor/src/utils/skinSampler";
+import logo from "./assets/logo.jpg";
 import "./App.css";
 
 const SEASONS = {
@@ -314,7 +315,10 @@ export default function App() {
   return (
     <div className="app">
       <header className="brand-bar">
-        <span className="wordmark">Chopper Beauty</span>
+        <span className="wordmark">
+          <img className="brand-logo" src={logo} width="48" height="48" alt="" />
+          Chopper Beauty
+        </span>
         {inStudio && <button className="text-button" onClick={returnHome}>Exit studio</button>}
       </header>
       <main>
