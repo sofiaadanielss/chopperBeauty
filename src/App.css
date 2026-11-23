@@ -5,14 +5,14 @@
   --paper: #fffcfb;
   --line: #e9dee8;
   --lavender: #f4eaf3;
-  --serif: "Iowan Old Style", Georgia, serif;
+  --font: system-ui, "Segoe UI", sans-serif;
 }
 
 body {
   min-height: 100vh;
   background: var(--paper);
   color: var(--ink);
-  font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font);
   line-height: 1.55;
 }
 
@@ -26,9 +26,8 @@ button:focus-visible, summary:focus-visible {
 h1, h2, h3, p { margin: 0; }
 
 h1 {
-  font-family: var(--serif);
-  font-weight: 500;
-  letter-spacing: -0.055em;
+  font-weight: 650;
+  letter-spacing: -0.045em;
   line-height: 1;
 }
 
@@ -69,7 +68,7 @@ h1 {
 }
 
 .welcome-content { max-width: 48rem; }
-.welcome h1 { font-size: clamp(3.5rem, 10vw, 8rem); }
+.welcome h1 { font-size: clamp(2.75rem, 8vw, 6rem); }
 
 .slogan {
   margin-top: 18px;
@@ -199,7 +198,35 @@ h1 {
   font-size: 0.88rem;
 }
 
-.choice-hint + .choices { margin-top: 10px; }
+.drape-options { margin-top: 12px; }
+.drape-options .choices { margin-top: 10px; }
+
+.pair-switch {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+.pair-option {
+  min-height: 36px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.pair-option:hover { background: #f4eaf3; }
+
+.pair-option[aria-pressed="true"] {
+  background: var(--accent);
+  color: white;
+}
 .confirm-choice { margin-top: 16px; }
 .confirm-choice:disabled { cursor: not-allowed; }
 
@@ -212,7 +239,6 @@ h1 {
 
 .guide .season-name {
   color: var(--accent);
-  font-family: var(--serif);
   font-size: 2.3rem;
   line-height: 1.1;
 }
@@ -287,13 +313,6 @@ h1 {
 
 .camera-button:hover:not(:disabled) { background: white; }
 
-.drape-strip {
-  position: absolute;
-  inset: auto 0 0;
-  height: 12%;
-  pointer-events: none;
-}
-
 .camera-status {
   margin-top: 10px;
   color: var(--muted);
@@ -309,7 +328,6 @@ h1 {
 .drapes p, .estimate { color: var(--muted); font-size: 0.87rem; }
 .drapes .choices { margin-top: 10px; }
 .estimate strong { color: var(--ink); margin-right: 5px; }
-.light-note { color: #805024; }
 
 @media (max-width: 740px) {
   .studio {
@@ -342,7 +360,7 @@ h1 {
   background: var(--paper);
 }
 
-.result-palette h2 {
+.result-palette h3 {
   font-size: 1.05rem;
 }
 
@@ -351,3 +369,78 @@ h1 {
   max-width: none;
   margin-bottom: 0;
 }
+
+.comparison-guide {
+  margin-top: 18px;
+  padding-left: 14px;
+  border-left: 2px solid #c6a9c3;
+}
+
+.comparison-guide h2 {
+  margin-bottom: 4px;
+  font-size: 0.95rem;
+}
+
+.camera-pick {
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: #ead8e7;
+  color: var(--accent);
+  font-size: 0.73rem;
+  white-space: nowrap;
+}
+
+.decision-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 16px;
+}
+
+.decision-actions .confirm-choice { margin-top: 0; }
+
+.camera-status:empty { display: none; }
+.capture-button { margin-top: 12px; }
+.capture-button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.drape-comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.drape-comparison figure {
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.drape-comparison img {
+  display: block;
+  width: 100%;
+  transform: scaleX(-1);
+}
+
+.drape-comparison figcaption {
+  padding-bottom: 6px;
+  font-size: 0.84rem;
+  text-align: center;
+}
+
+.comparison-color {
+  display: block;
+  min-height: 24px;
+  margin-bottom: 6px;
+}
+
+.season-result + .season-result {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.season-result .season-name { margin: 16px 0 8px; font-weight: 650; }
+.save-palette { margin: 12px 0 10px; }
