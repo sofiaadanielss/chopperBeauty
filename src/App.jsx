@@ -10,11 +10,13 @@ const SEASONS = {
   warm: {
     light: {
       name: "Spring",
+      makeup: [["#ef8f78","Peach blush"],["#e86f63","Coral lip"],["#c69660","Champagne shadow"]],
       description: "Warm and light. Start with clear, sunny shades.",
       colors: [["#f5b094", "Peach"], ["#ef816d", "Coral"], ["#efd279", "Butter"], ["#99ac69", "Apple green"]],
     },
     deep: {
       name: "Autumn",
+      makeup: [["#b86149","Terracotta blush"],["#98513f","Brick-red lip"],["#a26e42","Bronze shadow"]],
       description: "Warm and deep. Start with rich, earthy shades.",
       colors: [["#a9573a", "Rust"], ["#b7863d", "Ochre"], ["#74744a", "Olive"], ["#704738", "Chestnut"]],
     },
@@ -22,16 +24,20 @@ const SEASONS = {
   cool: {
     light: {
       name: "Summer",
+      makeup: [["#c1849e","Cool rose blush"],["#ad6f91","Soft mauve lip"],["#a897b8","Lilac-taupe shadow"]],
       description: "Cool and light. Start with soft, powdery shades.",
       colors: [["#b585a1", "Dusty rose"], ["#afa2cd", "Lavender"], ["#9eafcf", "Mist blue"], ["#899f9d", "Cool sage"]],
     },
     deep: {
       name: "Winter",
+      makeup: [["#c46791","Cool pink blush"],["#911c49","Berry lip"],["#675169","Plum shadow"]],
       description: "Cool and deep. Start with crisp, saturated shades.",
       colors: [["#993d69", "Berry"], ["#485997", "Royal blue"], ["#436b68", "Pine"], ["#573664", "Plum"]],
     },
   },
 };
+// use sampled lightness as a starting point for comparing drape depth.
+const LIGHT_DRAPE_THRESHOLD = 60;
 const UNDERTONES = { warm: "Warm", cool: "Cool", neutral: "Neutral" };
 
 function Analysis({ onExit }) {
@@ -42,7 +48,7 @@ function Analysis({ onExit }) {
   const streamRef = useRef(null);
   const rafRef = useRef(0);
   const runningRef = useRef(false);
-  const mountedRef = useRef(false);
+  const cameraRequestRef = useRef(null);
   const frozenRef = useRef(false);
   const smoothRef = useRef(null);
   const lastTimeRef = useRef(-1);
@@ -58,9 +64,8 @@ function Analysis({ onExit }) {
 
   // release the camera and model when leaving analysis.
   useEffect(() => {
-    mountedRef.current = true;
     return () => {
-      mountedRef.current = false;
+      cameraRequestRef.current?.abort();
       runningRef.current = false;
       cancelAnimationFrame(rafRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -70,18 +75,20 @@ function Analysis({ onExit }) {
   }, []);
 
   async function start() {
+    const request = new AbortController();
+    cameraRequestRef.current = request;
     setStarted(true);
     try {
       if (!landmarkerRef.current) {
         setStatus("Loading the face detection model…");
         const fileset = await FilesetResolver.forVisionTasks(WASM_URL);
-        if (!mountedRef.current) return;
+        if (request.signal.aborted) return;
         const landmarker = await FaceLandmarker.createFromOptions(fileset, {
           baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
           runningMode: "VIDEO",
           numFaces: 1,
         });
-        if (!mountedRef.current) {
+        if (request.signal.aborted) {
           landmarker.close();
           return;
         }
@@ -93,7 +100,7 @@ function Analysis({ onExit }) {
         video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 720 } },
         audio: false,
       });
-      if (!mountedRef.current) {
+      if (request.signal.aborted) {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
@@ -102,7 +109,7 @@ function Analysis({ onExit }) {
       const video = videoRef.current;
       video.srcObject = stream;
       await video.play();
-      if (!mountedRef.current) return;
+      if (request.signal.aborted) return;
 
       const { videoWidth, videoHeight } = video;
       overlayRef.current.width = videoWidth;
@@ -117,7 +124,7 @@ function Analysis({ onExit }) {
       setStatus("Center your face and look straight ahead.");
       rafRef.current = requestAnimationFrame(loop);
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (request.signal.aborted) return;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
       videoRef.current.srcObject = null;
@@ -181,6 +188,7 @@ function Analysis({ onExit }) {
   const lightNote = result ? getLightingWarning(result.lightness) : "";
   const [temperature, setTemperature] = useState(null);
   const [depth, setDepth] = useState(null);
+  const [manualChoice, setManualChoice] = useState(null);
   const step = temperature === null ? 0 : depth === null ? 1 : 2;
   const season = step === 2 ? SEASONS[temperature][depth] : null;
   const headingRef = useRef(null);
@@ -189,10 +197,45 @@ function Analysis({ onExit }) {
     headingRef.current.focus();
   }, [step]);
 
-  function selectComparison(value) {
-    if (step === 0) setTemperature(value);
-    else setDepth(value);
+  const usableEstimate = result && !lightNote && (frozen || !status);
+  const cameraSuggestion = usableEstimate
+    ? step === 0
+      ? result.undertone === "neutral" ? null : result.undertone
+      : result.lightness >= LIGHT_DRAPE_THRESHOLD ? "light" : "deep"
+    : null;
+  const selectedChoice = manualChoice ?? cameraSuggestion;
+
+  function confirmComparison() {
+    if (!selectedChoice) return;
+    if (step === 0) setTemperature(selectedChoice);
+    else {
+      stopCamera();
+      setDepth(selectedChoice);
+    }
+    setManualChoice(null);
     setDrape(null);
+  }
+
+  function stopCamera() {
+    cameraRequestRef.current?.abort();
+    runningRef.current = false;
+    cancelAnimationFrame(rafRef.current);
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    landmarkerRef.current?.close();
+    landmarkerRef.current = null;
+    grabRef.current = null;
+    smoothRef.current = null;
+    frozenRef.current = false;
+    lastTimeRef.current = -1;
+    lastUiRef.current = 0;
+    setStarted(false);
+    setCameraReady(false);
+    setFrozen(false);
+    setResult(null);
+    setStatus("");
+    setAspect("16 / 10");
   }
 
   function goBack() {
@@ -200,6 +243,7 @@ function Analysis({ onExit }) {
       onExit();
       return;
     }
+    setManualChoice(step === 1 ? temperature : depth);
     if (step === 1) setTemperature(null);
     else setDepth(null);
     setDrape(null);
@@ -212,16 +256,16 @@ function Analysis({ onExit }) {
       : [["light", "Light lilac", "#c8b9e5"], ["deep", "Deep plum", "#5b356c"]];
 
   return (
-    <div className="studio">
+    <div className={season ? "studio studio-results" : "studio"}>
       <section className="guide" aria-labelledby="guide-title">
         <button className="text-button back" onClick={goBack}>← {step ? "Previous step" : "Home"}</button>
         <ol className="steps" aria-label="Analysis progress">
-          {["Warm or cool", "Light or deep", "Your season"].map((label, index) => (
+          {["Warm or cool", "Light or deep", "Results"].map((label, index) => (
             <li key={label} aria-current={index === step ? "step" : undefined}>{label}</li>
           ))}
         </ol>
         <h1 id="guide-title" ref={headingRef} tabIndex={-1}>
-          {["Warm or cool?", "Light or deep?", "Your season"][step]}
+          {["Warm or cool?", "Light or deep?", "Results"][step]}
         </h1>
         {step < 2 ? (
           <>
@@ -231,75 +275,99 @@ function Analysis({ onExit }) {
             <p>{step === 0
               ? "Choose the family that makes your complexion look brighter and more even."
               : "Choose the depth that brings your features into focus without overpowering them."}</p>
+            <p className="choice-hint">{cameraSuggestion
+              ? step === 0 ? "Suggested from your camera undertone estimate." : "Suggested from the lightness of your camera sample."
+              : usableEstimate && step === 0
+                ? "The camera read your undertone as neutral. Compare both options and choose the one you prefer."
+                : "Use the camera for a suggestion, or choose an option yourself."}</p>
             <div className="choices" role="group" aria-label="Choose the better match">
               {comparisons.map(([value, label, color]) => (
-                <button className="choice" key={value} onClick={() => selectComparison(value)}>
+                <button className="choice" key={value} aria-pressed={selectedChoice === value}
+                  onClick={() => setManualChoice(value)}>
                   <span className="choice-dot" style={{ background: color }} aria-hidden="true" />
                   {label}
                 </button>
               ))}
             </div>
+            <button className="button confirm-choice" onClick={confirmComparison} disabled={!selectedChoice}>
+              {step === 0 ? "Continue" : "See my season"}
+            </button>
           </>
         ) : (
           <>
             <p className="season-name">{season.name}</p>
             <p>{season.description} This is a starting palette based on your drape choices.</p>
-            <ul className="palette" aria-label={season.name + " palette"}>
-              {season.colors.map(([color, name]) => (
-                <li key={name}><span className="swatch" style={{ background: color }} />{name}</li>
-              ))}
-            </ul>
+            <div className="result-palettes">
+              <ResultPalette title="Makeup colors" colors={season.makeup} />
+              <ResultPalette title="Clothing colors" colors={season.colors} />
+            </div>
             <button className="text-button reset" onClick={() => {
               setTemperature(null);
               setDepth(null);
+              setManualChoice(null);
               setDrape(null);
             }}>Start comparisons again</button>
           </>
         )}
       </section>
-      <section className="camera" aria-labelledby="camera-title">
-        <div className="camera-heading">
-          <h2 id="camera-title">Camera preview</h2>
-          <span>{cameraReady ? "Live" : "Optional"}</span>
-        </div>
-        <div className="viewport" style={{ aspectRatio: aspect }}>
-          <video ref={videoRef} playsInline muted />
-          <canvas ref={overlayRef} aria-hidden="true" />
-          {!cameraReady && (
-            <div className="camera-cover">
-              <p>Use your camera as a mirror.</p>
-              <button className="button camera-button" onClick={start} disabled={started}>
-                {started ? "Starting camera…" : "Allow camera access"}
-              </button>
+      {!season && (
+        <section className="camera" aria-labelledby="camera-title">
+          <div className="camera-heading">
+            <h2 id="camera-title">Camera preview</h2>
+            <span>{cameraReady ? "Live" : "Optional"}</span>
+          </div>
+          <div className="viewport" style={{ aspectRatio: aspect }}>
+            <video ref={videoRef} playsInline muted />
+            <canvas ref={overlayRef} aria-hidden="true" />
+            {!cameraReady && (
+              <div className="camera-cover">
+                <p>Use your camera as a mirror.</p>
+                <button className="button camera-button" onClick={start} disabled={started}>
+                  {started ? "Starting camera…" : "Allow camera access"}
+                </button>
+              </div>
+            )}
+            {cameraReady && drape && <div className="drape-strip" style={{ background: drape }} aria-hidden="true" />}
+          </div>
+          {status && <p className="camera-status" role="status">{status}</p>}
+          {cameraReady && (
+            <div className="drapes">
+              <h3>Preview drapes</h3>
+              <p>Use the color strip as a visual reference, or hold real fabric near your face.</p>
+              <div className="choices">
+                {comparisons.map(([value, label, color]) => (
+                  <button className="choice" key={value} aria-pressed={drape === color}
+                    onClick={() => setDrape((current) => current === color ? null : color)}>
+                    <span className="choice-dot" style={{ background: color }} aria-hidden="true" />
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-          {cameraReady && drape && <div className="drape-strip" style={{ background: drape }} aria-hidden="true" />}
-        </div>
-        {status && <p className="camera-status" role="status">{status}</p>}
-        {cameraReady && step < 2 && (
-          <div className="drapes">
-            <h3>Preview drapes</h3>
-            <p>Use the color strip as a visual reference, or hold real fabric near your face.</p>
-            <div className="choices">
-              {comparisons.map(([value, label, color]) => (
-                <button className="choice" key={value} aria-pressed={drape === color}
-                  onClick={() => setDrape(drape === color ? null : color)}>
-                  <span className="choice-dot" style={{ background: color }} aria-hidden="true" />
-                  {label}
-                </button>
-              ))}
+          {estimate && (
+            <div className="estimate">
+              <p><strong>Camera estimate</strong> {estimate} undertone</p>
+              <button className="text-button" onClick={toggleFreeze}>{frozen ? "Resume estimate" : "Freeze estimate"}</button>
+              {lightNote && <p className="light-note">{lightNote}</p>}
             </div>
-          </div>
-        )}
-        {estimate && (
-          <div className="estimate">
-            <p><strong>Camera estimate</strong> {estimate} undertone</p>
-            <button className="text-button" onClick={toggleFreeze}>{frozen ? "Resume estimate" : "Freeze estimate"}</button>
-            {lightNote && <p className="light-note">{lightNote}</p>}
-          </div>
-        )}
-      </section>
+          )}
+        </section>
+      )}
     </div>
+  );
+}
+
+function ResultPalette({ title, colors }) {
+  return (
+    <section className="result-palette">
+      <h2>{title}</h2>
+      <ul className="palette" aria-label={title} style={{ "--swatch-count": colors.length }}>
+        {colors.map(([color, name]) => (
+          <li key={name}><span className="swatch" style={{ background: color }} />{name}</li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

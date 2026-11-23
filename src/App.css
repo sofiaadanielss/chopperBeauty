@@ -194,6 +194,15 @@ h1 {
   background: #f7edf6;
 }
 
+.guide .choice-hint {
+  margin-top: 20px;
+  font-size: 0.88rem;
+}
+
+.choice-hint + .choices { margin-top: 10px; }
+.confirm-choice { margin-top: 16px; }
+.confirm-choice:disabled { cursor: not-allowed; }
+
 .choice-dot {
   flex: 0 0 16px;
   height: 16px;
@@ -308,4 +317,37 @@ h1 {
     align-content: start;
   }
   .guide { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+
+.studio-results {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.studio-results .guide {
+  border-right: 0;
+}
+
+.result-palettes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 16px;
+  max-width: 64rem;
+  margin: 24px 0 12px;
+}
+
+.result-palette {
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.result-palette h2 {
+  font-size: 1.05rem;
+}
+
+.result-palette .palette {
+  grid-template-columns: repeat(var(--swatch-count), minmax(0, 1fr));
+  max-width: none;
+  margin-bottom: 0;
 }
