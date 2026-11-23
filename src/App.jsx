@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
-import { MODEL_URL, WASM_URL } from "../chopper-beauty-refactor/src/constants/config";
-import { describeSkinColor, getLightingWarning, smoothColor } from "../chopper-beauty-refactor/src/utils/color";
-import { averagePatchesColor, getSamplePatches } from "../chopper-beauty-refactor/src/utils/skinSampler";
+import { MODEL_URL, WASM_URL } from "./constants/config";
+import { describeSkinColor, getLightingWarning, smoothColor } from "./utils/color";
+import { averagePatchesColor, getSamplePatches } from "./utils/skinSampler";
 import logo from "./assets/logo.jpg";
 import "./App.css";
 
